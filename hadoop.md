@@ -283,7 +283,7 @@ HDFS以流式数据访问模式来存储超大文件，运行于商用硬件集�
 
 ### HDFS 优缺点
 
-##### 优点
+#### 优点
 
 1. 高容错性
 
@@ -303,7 +303,7 @@ HDFS以流式数据访问模式来存储超大文件，运行于商用硬件集�
 
 3. 可构建在廉价机器上，通过多副本机制，提高可靠性。
 
-##### 缺点
+#### 缺点
 
 1. 不适合低延时数据访问，比如毫秒级的存储数据，是做不到的。
 
@@ -368,6 +368,76 @@ HDFS以流式数据访问模式来存储超大文件，运行于商用硬件集�
 - > 官网架构图
   >
   > ![HDFS 架构](hadoop.assets/hdfsarchitecture.gif) 
+
+### HDFS 文件块大小
+
+1. **HDFS**中的文件在物理上是分块存储（Block），块的大小可以通过配置参数( dfs.blocksize)来规定，默认大小在Hadoop2.x版本中是**128M**，老版本中是64M。
+
+   （1）如果寻址时间约为10ms，即查找到目标block的时间为10ms。
+
+   （2）寻址时间为传输时间的1%时，则为最佳状态。因此，传输时间=10ms/0.01=1000ms=1s。
+
+   （3）目前磁盘的传输速率普遍为100MB/s。
+
+   （4）block大小=1s*100MB/s=100MB。
+
+2. 为何 **HDFS** 块大小设置为 磁盘1秒 IO 的数据量
+
+   （1）HDFS的块设置太小，会增加寻址时间，程序一直在找块的开始位置；
+
+   （2）如果块设置的太大，从磁盘传输数据的时间会明显大于定位这个块开始位置所需的时间。导致程序在处理这块数据时，会非常慢。
+
+3. **HDFS**块的大小设置主要**取决于磁盘传输速率。**
+
+### HDFS 文件读写原理
+
+Client（客户端）对HDFS中的数据进行读写操作，分别是Client从HDFS中查找数据，即为Read（读）数据；Client从HDFS中存储数据，即为Write（写）数据。下面我们对HDFS的读写流程进行详细的介绍。假设有一个文件1.txt文件，大小为300M，这样就划分出3个数据块，如图1所示。
+
+![img](hadoop.assets/clip_image002.jpg) 
+
+#### HDFS写数据原理
+
+![img](hadoop.assets/clip_image004.jpg) 
+
+（1） 客户端发起文件上传请求，通过RPC（远程过程调用）与NameNode建立通讯。
+
+（2） NameNode检查元数据文件的系统目录树。
+
+（3） 若系统目录树的父目录不存在该文件相关信息，返回客户端可以上传文件。
+
+（4） 客户端请求上传第一个Block数据块，以及数据块副本的数量（可以自定义副本数量，也可以使用集群规划的副本数量）。
+
+（5） NameNode检测元数据文件中DataNode信息池，找到可用的数据节点（DataNode_01，DataNode_02，DataNode_03）。
+
+（6） 将可用的数据节点的IP地址返回给客户端。
+
+（7） 客户端请求3台节点中的一台服务器DataNode_01，进行传送数据（本质上是一个RPC调用，建立管道Pipeline），DataNode_01收到请求会继续调用服务器DataNode_02，然后服务器DataNode_02调用服务器DataNode_03。
+
+（8） DataNode之间建立Pipeline后，逐个返回建立完毕信息。
+
+（9） 客户端与DataNode建立数据传输流，开始发送数据包（数据是以数据包形式进行发送）。
+
+（10） 客户端向DataNode_01上传第一个Block数据块，是以Packet为单位（默认64K），发送数据块。当DataNode_01收到一个Packet就会传给DataNode_02，DataNode_02传给DataNode_03； DataNode_01每传送一个Packet都会放入一个应答队列等待应答。
+
+（11） 数据被分割成一个个Packet数据包在Pipeline上依次传输，而在Pipeline反方向上，将逐个发送Ack（命令正确应答），最终由Pipeline中第一个DataNode节点DataNode_01将Pipeline的 Ack信息发送给客户端。
+
+（12） DataNode返回给客户端，第一个Block块传输完成。客户端则会再次请求NameNode上传第二个Block块和第三块到服务器上，重复上面的步骤，直到3个Block都上传完毕。
+
+#### HDFS读数据原理
+
+![img](hadoop.assets/clip_image006.jpg) 
+
+（1） 客户端向NameNode发起RPC请求，来获取请求文件Block数据块所在的位置。
+
+（2） NameNode检测元数据文件，会视情况返回Block块信息或者全部Block块信息，对于每个Block块，NameNode都会返回含有该Block副本的DataNode地址。
+
+（3） 客户端会选取排序靠前的DataNode来依次读取Block块（如果客户端本身就是DataNode，那么将从本地直接获取数据），每一个Block都会进行CheckSum（完整性验证），若文件不完整，则客户端会继续向NameNode获取下一批的Block列表，直到验证读取出来文件是完整的，则Block读取完毕。
+
+（4） 客户端会把最终读取出来所有的Block块合并成一个完整的最终文件（例如：1.txt）。
+
+
+
+
 
 
 
