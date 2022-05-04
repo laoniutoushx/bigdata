@@ -437,6 +437,146 @@ Client（客户端）对HDFS中的数据进行读写操作，分别是Client从H
 
 
 
+#### HDFS 界面
+
+![image-20220502172556169](hadoop.assets/image-20220502172556169.png) 
+
+##### 类 linux/unix 文件系统
+
+| Permission | Owner | Group      | Size | Last Modified | Replication | Block Size | Name     |
+| ---------- | ----- | ---------- | ---- | ------------- | ----------- | ---------- | -------- |
+| -rw-r--r-- | root  | supergroup | 14 B | May 02 17:21  | 2           | 128 MB     | test.txt |
+|            |       |            |      |               |             |            |          |
+|            |       |            |      |               |             |            |          |
+
+##### 文件上传执行命令
+
+```
+hdfs dfs -put test.txt /
+```
+
+hdfs 有对应 用户/用户组/权限， 其默认依据 连接客户端所属 用户/用户组/权限 创建文件（hdfs 无创建用户、权限的接口）
+
+有超级用户概念
+
+​		linux 超级用户：root
+
+​        hdfs 超级用户：namenode进程的启动用户
+
+hdfs 文件系统权限由 hdfs 自己控制， 控制使用 hdfs 超级用户
+
+
+
+实操：
+
+切换用 root 搭建的 hdfs，  用 god 用户来启动
+
+
+
+h01 ~ h03：
+
+​	1）添加用户：hadoop
+
+​							useradd	hadoop
+
+​							useradd	hadoop
+
+​	2）将资源与用户绑定（a，安装部署程序；b，数据存放的目录）
+
+​			chown -R hadoop src
+
+​	3）切换到 hadoop 启动 start-dfs.sh	<	需要 ssh 免密
+
+​			给 hadoop 做免密
+
+
+
+##### 文件分割上传
+
+```
+docker cp 
+docker exec -it h01 /bin/bash
+./hdfs dfs -D dfs.blocksize=1048576 -put /home/dpcq.txt /shx/
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## MapReduce 原理
+
+什么叫 Map、Reduce
+
+一进N出
+
+![image-20220504204753668](hadoop.assets/image-20220504204753668.png) 
+
+### MapReduce过程
+
+block 块、切片、并行度，reeduce task（分区） 数量由人定义
+
+![image-20220504210129373](hadoop.assets/image-20220504210129373.png) 
+
+### MapReduce过程（详细）
+
+![image-20220504211417674](hadoop.assets/image-20220504211417674.png) 
+
+### MapReduce备注
+
+![image-20220504213519815](hadoop.assets/image-20220504213519815.png) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -509,10 +649,6 @@ Client（客户端）对HDFS中的数据进行读写操作，分别是Client从H
 
 ## Hadoop集群快速搭建（基于虚拟机）
 
-
-
-
-
 本地运行 hadoop 问题
 
 1. 设置 hadoop.home.dir
@@ -539,7 +675,6 @@ Client（客户端）对HDFS中的数据进行读写操作，分别是Client从H
    }
    ```
 
-   
 
 ## 提交 MapReduce 程序到集群并运行
 
