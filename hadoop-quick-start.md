@@ -1,29 +1,6 @@
 # 一、Hadoop Docker 集群快速部署
 
-## 集群规划
-
-#### Zookeeper集群：
-
-```
-192.168.182.12 （bigdata12）
-192.168.182.13 （bigdata13）
-192.168.182.14 （bigdata14）
-```
-
-#### Hadoop集群：
-
-```
-192.168.182.12 （bigdata12）   NameNode1主节点      ResourceManager1主节点     Journalnode
-192.168.182.13 （bigdata13）   NameNode2备用主节点  ResourceManager2备用主节点  Journalnode
-192.168.182.14 （bigdata14）   DataNode1      NodeManager1
-192.168.182.15 （bigdata15）   DataNode2      NodeManager2
-```
-
-
-
-
-
-## 安装思路为
+### 安装思路为
 
 ```
 安装docker -> 运行docker导入ubuntu镜像 -> 运行ubuntu系统 -> 在系统中配置好单个节点 -> 
@@ -475,7 +452,7 @@ cd /usr/local/hadoop/sbin/
 
 
 
-# ubuntu修改hosts后马上生效
+### ubuntu修改hosts后马上生效
 
 #### Method 1
 
@@ -498,5 +475,793 @@ sudo /etc/init.d/networking restart
 sudo /etc/init.d/dns-clean start
 ```
 
+# 二、Hadoop HA 高可用集群快速部署
 
+## 2.1 集群的规划
 
+#### Zookeeper集群：
+
+```
+192.168.5.37 （h01）
+192.168.5.34 （h03）
+192.168.5.31 （h04）
+```
+
+#### Hadoop集群：
+
+| 主机                 |                                                              |
+| -------------------- | ------------------------------------------------------------ |
+| 192.168.5.37 （h01） | NameNode1主节点		Journalnode		DataNode1          |
+| 192.168.5.32 （h02） | NameNode2备用主节点    Journalnode	DataNode2              |
+| 192.168.5.34 （h03） | DataNode3      NodeManager1		ResourceManager1主节点    |
+| 192.168.5.31 （h04） | DataNode4      NodeManager2		ResourceManager2备用主节点 |
+
+## 2.2 基础设施准备
+
+- [x] 设置 ip 与 主机名
+
+  ```
+  # 修改网络配置文件
+  vi /etc/sysconfig/network-scripts/ifcfg-ens192
+  
+  # 每个主机分别配置	HOSTNAME=h01/h02/h03/h04
+  NETWORKING=yes
+  HOSTNAME=h01
+  
+  # 修改 host
+  vi /etc/hosts
+  
+  # 添加下列 ost 信息
+  127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+  ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+  
+  192.168.5.37 h01
+  192.168.5.32 h02
+  192.168.5.34 h03
+  192.168.5.31 h04
+  
+  # 重启网络 （hadoop@h01  hostname 重新连接，观察变化）
+  service network restart
+  ```
+
+  ![image-20220507111540833](hadoop-quick-start.assets/image-20220507111540833.png) 
+
+- [x] 关闭防火墙 & selinux
+
+  ```
+  # 临时关闭防火墙
+  systemctl stop firewalld
+  #　永久关闭防火墙
+  systemctl disable firewalld
+  
+  # 临时关闭 selinux
+  setenforce 0
+  # 永久关闭 selinux
+  vi /etc/selinux/config
+  SELINUX=enforcing         修改为"SELINUX=disabled"
+  ```
+
+- [x] 时间同步
+
+  ```
+  # 配置时区
+  cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+  y
+  
+  # 启动 ntp 时间同步工具
+  yum install ntp
+  systemctl enable ntpd.service
+  systemctl start ntpd.service
+  ```
+
+- [x] 用户配置
+
+  ```
+  groupadd hadoop
+  useradd -g hadoop hadoop
+  ```
+
+  ```
+  # 修改密码
+  passwd hadoop
+  seatone@123
+  ```
+
+  ```
+  # 设置用户 sudo 权限 （root 用户下输入 visudo， 文件末尾添加 hadoop ALL=(ALL) NOPASSWD:ALL 即可
+  su root
+  visudo
+  hadoop        ALL=(ALL)       NOPASSWD: ALL
+  ```
+
+- [x] 设置集群 hadoop 用户 SSH 免密钥
+
+  ```
+  su hadoop
+  ssh-keygen -t rsa
+  ```
+
+  ```
+  cd ~/.ssh
+  
+  # 将四台机器的公钥文件合并到authorized_keys
+  
+  # 本机
+  cat id_rsa.pub >> authorized_keys
+  
+  # 其他主机 合并 pub_key
+  ssh hadoop@h02 cat ~/.ssh/id_rsa.pub >> authorized_keys
+  ssh hadoop@h03 cat ~/.ssh/id_rsa.pub >> authorized_keys
+  ssh hadoop@h04 cat ~/.ssh/id_rsa.pub >> authorized_keys
+  ```
+
+  ```
+  # authorized_keys文件复制到其他节点
+  scp /home/hadoop/.ssh/authorized_keys hadoop@h02:/home/hadoop/.ssh/
+  scp /home/hadoop/.ssh/authorized_keys hadoop@h03:/home/hadoop/.ssh/
+  scp /home/hadoop/.ssh/authorized_keys hadoop@h04:/home/hadoop/.ssh/
+  ```
+
+  ```
+  # 为每台机器下  ~/.ssh  文件夹授予 700（读、写、执行 4+2+1） 权限
+  cd /home/hadoop
+  chmod 700 .ssh
+  # .ssh 目录下所有文件 授予 600 权限
+  chmod 600 .ssh/*
+  ```
+
+- [x] 安装 JDK
+
+  ```
+  su root
+  yum install -y java-1.8.0-openjdk-devel.x86_64 java-1.8.0-openjdk.x86_64
+  ```
+
+  编辑/etc/profile, 在末尾添加
+
+  ```
+  vi /etc/profile
+  
+  # 追加
+  export JAVA_HOME=/usr/lib/jvm/jre-1.8.0
+  ```
+
+  ```
+  source /etc/profile
+  java -version
+  ```
+
+  ![image-20220507114657041](hadoop-quick-start.assets/image-20220507114657041.png) 
+
+- [x] **Ansible 安装** （只在  **master** 节点安装）
+
+  ```
+  rpm -Uvh http://mirrors.ustc.edu.cn/epel/epel-release-latest-7.noarch.rpm
+  
+  yum install epel-release -y
+  
+  yum install ansible
+  ```
+
+  **ansible 配置**  （只在  **master** 节点配置）
+
+  ```
+  /etc/ansible/hosts
+  ```
+
+  ```
+  [ssh]
+  192.168.5.37 ansible_ssh_user=hadoop ansible_ssh_pass=seatone@123
+  192.168.5.32 ansible_ssh_user=hadoop ansible_ssh_pass=seatone@123
+  192.168.5.34 ansible_ssh_user=hadoop ansible_ssh_pass=seatone@123
+  192.168.5.31 ansible_ssh_user=hadoop ansible_ssh_pass=seatone@123
+  
+  # 所有节点
+  [web]
+  192.168.5.37
+  192.168.5.32
+  192.168.5.34
+  192.168.5.31
+  
+  # 从节点
+  [slaver]
+  192.168.5.32
+  192.168.5.34
+  192.168.5.31
+  
+  # zookeeper 节点
+  [zk]
+  192.168.5.37
+  192.168.5.34
+  192.168.5.31
+  ```
+
+  
+
+- [ ] ###### 内核调优
+
+  #### 调大打开文件数
+
+  修改/etc/security/limits.conf
+
+  ```shell
+  *               soft    nofile          65555
+  *               hard    nofile          65555
+  *               hard    core            65555
+  *               soft    core            65555
+  *               hard    noproc          65555
+  *               soft    noproc          65555
+  ```
+
+  修改netfilter 配置
+
+  ~~~shell
+  #net.netfilter.nf_conntrack_buckets 的值
+  # 临时生效
+  echo 262144 > /sys/module/nf_conntrack/parameters/hashsize
+  # 重启永久生效，新建文件：/etc/modprobe.d/iptables.conf，设置如下
+  options nf_conntrack hashsize = 32768 
+  
+  # 修改net.netfilter.nf_conntrack_max 最大追踪连接数修改 调优
+  # 临时生效
+  sudo sysctl -w net.netfilter.nf_conntrack_max=1048576
+  suod sysctl -w net.nf_conntrack_max=1048576
+  
+  # 永久生效
+  # 添加修改内核配置文件（/etc/sysctl.conf） 
+  net.netfilter.nf_conntrack_max=1048576
+  net.nf_conntrack_max=1048576
+  # 当数据包超长时，不丢弃数据包。K8S重要
+  net.netfilter.nf_conntrack_tcp_be_liberal=1
+  
+  # 如果要马上应用配置文件里的设置：
+  sudo sysctl -p /etc/sysctl.conf
+  
+  # 临时生效
+  
+  # 主动方的最后1个状态。默认120秒
+  sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_fin_wait=30
+  sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_time_wait=30
+  
+  # CLOSE_WAIT是被动方收到FIN发ACK，然后会转到LAST_ACK发FIN，除非程序写得有问题，正常来说这状态持续时间很短。#默认 60 秒
+  sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_close_wait=15
+  
+  # 理论上不用这么长，不小于 net.ipv4.tcp_keepalive_time 就行了。默认 432000 秒（5天）
+  sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_established=300
+  
+  -----------------------------------------------------
+  
+  # 永久生效
+  # 修改内核配置文件（/etc/sysctl.conf） 
+  net.netfilter.nf_conntrack_tcp_timeout_fin_wait=30
+  net.netfilter.nf_conntrack_tcp_timeout_time_wait=30
+  net.netfilter.nf_conntrack_tcp_timeout_close_wait=15
+  net.netfilter.nf_conntrack_tcp_timeout_established=300
+  
+  # 如果要马上应用配置文件里的设置：
+  sudo sysctl -p /etc/sysctl.conf
+  
+  
+  ## 安装 lrzsz
+  ``` shell
+  yum  install -y lrzsz
+  ~~~
+
+## 2.3 Zookeeper 配置
+
+1. zookerper 安装包下载
+
+     上传 zookeeper 包到 ~/ 目录
+
+2. ansible 分发 ZK 安装包
+
+   ```
+   ansible zk -m copy -a 'src=~/apache-zookeeper-3.7.0-bin.tar.gz dest=~/'
+   ansible zk -a "tar -zxvf ~/apache-zookeeper-3.7.0-bin.tar.gz -C ~/"
+   ansible zk -a "mv ~/apache-zookeeper-3.7.0-bin ~/zookeeper-3.7.0"
+   ```
+
+3. 添加 zookeeper datadir，后续配置文件进行配置
+
+   ```
+   ansible zk -a 'mkdir -p ~/data/zookeeper'
+   ```
+
+4. 修改 conf/zoo.cfg 并分发配置文件
+
+   ```
+   cp /home/hadoop/zookeeper-3.7.0/conf/zoo_sample.cfg /home/hadoop/zookeeper-3.7.0/conf/zoo.cfg
+   vi /home/hadoop/zookeeper-3.7.0/conf/zoo.cfg
+   ```
+
+   修改 zoo.cfg  配置
+
+   ```
+   # 修改
+   dataDir=/home/hadoop/data/zookeeper/zkdata
+   dataLogDir=/home/hadoop/data/zookeeper/zkdatalog
+   
+   # 追加
+   server.1=h01:2888:3888
+   server.3=h03:2888:3888
+   server.4=h04:2888:3888
+   ```
+
+   ```
+   ansible zk -a "mkdir -p /home/hadoop/data/zookeeper/zkdata"
+   ansible zk -a "mkdir -p /home/hadoop/data/zookeeper/zkdatalog"
+   ```
+
+   ```
+   ansible zk -m copy -a "src=/home/hadoop/zookeeper-3.7.0/conf/zoo.cfg dest=/home/hadoop/zookeeper-3.7.0/conf/zoo.cfg"
+   ```
+
+5. myid 文件配置
+
+   进入各个节点 /home/hadoop/data/zookeeper/zkdata 目录，创建 myid 文件，内容分别 1， 2， 3
+
+   ```
+   vi /home/hadoop/data/zookeeper/zkdata/myid
+   1
+   ```
+
+   ```
+   vi /home/hadoop/data/zookeeper/zkdata/myid
+   3
+   ```
+
+   ```
+   vi /home/hadoop/data/zookeeper/zkdata/myid
+   4
+   ```
+
+6. 启动服务
+
+   ```
+   ansible zk -a "/home/hadoop/zookeeper-3.7.0/bin/zkServer.sh start"
+   ansible zk -a "/home/hadoop/zookeeper-3.7.0/bin/zkServer.sh status"
+   ansible zk -a "/home/hadoop/zookeeper-3.7.0/bin/zkServer.sh stop"
+   ```
+
+## 2.4 安装 Hadoop
+
+1. hadoop 安装包下载
+
+   上传到服务器 ~/
+
+2.  ansible 分发安装包
+
+   ```
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2.tar.gz dest=~/'
+   ansible web -a 'tar -zxvf ~/hadoop-3.2.2.tar.gz -C ~/'
+   ```
+
+3. 创建 hadoop 临时目录
+
+   ```
+   ansible web -a 'mkdir -p ~/data/hadoop'
+   ansible web -a 'mkdir -p ~/data/hadoop/journalnode/data'
+   ansible web -a 'mkdir -p ~/data/hadoop/hdfs/namenode'
+   ansible web -a 'mkdir -p ~/data/hadoop/hdfs/datanode'
+   
+   
+   # 暂时不需要了
+   ansible web -a 'mkdir -p ~/data/hadoop/log'
+   ansible web -a 'mkdir -p ~/hadoop-3.2.2/pid'
+   ```
+
+4.  每个机器 配置 环境变量
+
+   ```
+   vi /etc/profile
+   ```
+
+   ```
+   # java
+   export JAVA_HOME=/usr/lib/jvm/jre-1.8.0
+   export JRE_HOME=${JAVA_HOME}/jre    
+   export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib    
+   export PATH=${JAVA_HOME}/bin:$PATH
+   
+   # hadoop
+   export HADOOP_HOME=/home/hadoop/hadoop-3.2.2
+   export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+   export HADOOP_COMMON_HOME=$HADOOP_HOME 
+   export HADOOP_HDFS_HOME=$HADOOP_HOME 
+   export HADOOP_MAPRED_HOME=$HADOOP_HOME
+   export HADOOP_YARN_HOME=$HADOOP_HOME 
+   export HADOOP_INSTALL=$HADOOP_HOME 
+   export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native 
+   export HADOOP_CONF_DIR=$HADOOP_HOME 
+   export HADOOP_LIBEXEC_DIR=$HADOOP_HOME/libexec 
+   export JAVA_LIBRARY_PATH=$HADOOP_HOME/lib/native:$JAVA_LIBRARY_PATH
+   export HADOOP_CONF_DIR=$HADOOP_PREFIX/etc/hadoop
+   export HDFS_DATANODE_USER=hadoop
+   export HDFS_DATANODE_SECURE_USER=hadoop
+   export HDFS_SECONDARYNAMENODE_USER=hadoop
+   export HDFS_NAMENODE_USER=hadoop
+   export YARN_RESOURCEMANAGER_USER=hadoop
+   export YARN_NODEMANAGER_USER=hadoop
+   export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+   ```
+
+   ```
+   source /etc/profile
+   ```
+
+   
+
+5.  处理 hadoop 配置文件
+
+   ```
+   下载配置文件	（/home/hadoop/hadoop-3.2.2/etc/hadoop/）
+   core-site.xml 
+   hdfs-site.xml 
+   mapred-site.xml
+   yarn-site.xml
+   ```
+
+   编辑配置文件
+
+   > core-site.xml
+   >
+   > ```
+   > <configuration>
+   >     <!-- 指定hdfs的nameservice为ns1 -->
+   >     <!-- <property>
+   >         <name>fs.defaultFS</name>
+   >         <value>hdfs://ns1/</value>
+   >     </property> -->
+   >     <property>
+   >         <name>fs.default.name</name>
+   >         <value>hdfs://h01:9000</value>
+   >     </property>
+   > 
+   >     <!-- 指定hadoop临时目录 -->
+   >     <property>
+   >         <name>hadoop.tmp.dir</name>
+   >         <value>/home/hadoop/data</value>
+   >     </property>
+   > 
+   >     <!-- 指定zookeeper地址 -->
+   >     <property>
+   >         <name>ha.zookeeper.quorum</name>
+   >         <value>h01:2181,h03:2181,h04:2181</value>
+   >     </property>
+   >     <!-- <property>
+   >         <name>ha.zookeeper.session-timeout.ms</name>
+   >         <value>3000</value>
+   >     </property> -->
+   > </configuration>
+   > ```
+
+   > hdfs-site.xml
+   >
+   > ```
+   > <configuration>
+   >   <!-- hdfs HA configuration-->
+   >   <!-- all default configuration can be found at https://hadoop.apache.org/docs/stable|<can be a version liek r3.2.1></can>/hadoop-project-dist/hadoop-hdfs//hdfs-default.xml -->
+   >   
+   >   <property>
+   >     <name>dfs.ha.automatic-failover.enabled</name>
+   >     <value>true</value>
+   >   </property>
+   >   <!-- dfs.nameservices 这里需要与core-site.xml 中fs.defaultFS 的名称一致-->
+   >   <property>
+   >     <name>dfs.nameservices</name>
+   >     <value>mycluster</value>
+   >   </property>
+   >   <!-- 定义集群中 namenode 列表，这里定义了三个namenode，分别是nn1,nn2,nn3-->
+   >   <property>
+   >     <name>dfs.ha.namenodes.mycluster</name>
+   >     <value>nn1,nn2,nn3,nn4</value>
+   >   </property>
+   >   <!-- namenode nn1的具体定义，这里要和 dfs.ha.namenodes.mycluster 定义的列表对应 -->
+   >   <property>
+   >     <name>dfs.namenode.rpc-address.mycluster.nn1</name>
+   >     <value>h01:8020</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.namenode.rpc-address.mycluster.nn2</name>
+   >     <value>h02:8020</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.namenode.rpc-address.mycluster.nn3</name>
+   >     <value>h03:8020</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.namenode.rpc-address.mycluster.nn4</name>
+   >     <value>h04:8020</value>
+   >   </property>
+   >   <!-- namenode nn1的具体定义，这里要和 dfs.ha.namenodes.mycluster 定义的列表对应 -->
+   >   <property>
+   >     <name>dfs.namenode.http-address.mycluster.nn1</name>
+   >     <value>h01:9870</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.namenode.http-address.mycluster.nn2</name>
+   >     <value>h02:9870</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.namenode.http-address.mycluster.nn3</name>
+   >     <value>h03:9870</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.namenode.http-address.mycluster.nn4</name>
+   >     <value>h04:9870</value>
+   >   </property>
+   > <!-- 指定NameNode的元数据在JournalNode上的存放位置 -->
+   >   <property>
+   >     <name>dfs.namenode.shared.edits.dir</name>
+   >     <value>qjournal://h01:8485;h02:8485;h03:8485;h04:8485/mycluster</value>
+   >   </property>
+   >   <!-- 指定JournalNode在本地磁盘存放数据的位置 -->
+   >   <property>
+   >     <name>dfs.journalnode.edits.dir</name>
+   >     <value>/home/hadoop/data/hadoop/journalnode/data</value>
+   >   </property>
+   >   <!-- 配置失败自动切换实现方式 -->
+   >   <property>
+   >     <name>dfs.client.failover.proxy.provider.mycluster</name>
+   >     <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+   >   </property>
+   >   <!-- 配置隔离机制方法，多个机制用换行分割，即每个机制暂用一行-->
+   >   <property>
+   >     <name>dfs.ha.fencing.methods</name>
+   >     <value>sshfence</value>
+   >   </property>
+   >   <!-- 使用sshfence隔离机制时需要ssh免登陆 -->
+   >   <property>
+   >     <name>dfs.ha.fencing.ssh.private-key-files</name>
+   >     <value>/home/hadoop/.ssh/id_rsa</value>
+   >   </property>
+   >   <!-- 配置sshfence隔离机制超时时间 -->
+   >   <property>
+   >     <name>dfs.ha.fencing.ssh.connect-timeout</name>
+   >     <value>30000</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.journalnode.http-address</name>
+   >     <value>0.0.0.0:8480</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.journalnode.rpc-address</name>
+   >     <value>0.0.0.0:8485</value>
+   >   </property>
+   >   <!-- hdfs HA configuration end-->
+   > 
+   >   <property>
+   >     <name>dfs.replication</name>
+   >     <value>2</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.namenode.name.dir</name>
+   >     <value>/home/hadoop/data/hadoop/hdfs/namenode</value>
+   >   </property>
+   >   <property>
+   >     <name>dfs.datanode.data.dir</name>
+   >     <value>/home/hadoop/data/hadoop/hdfs/datanode</value>
+   >   </property>
+   >   <!--开启webhdfs接口访问-->
+   >   <property>
+   >     <name>dfs.webhdfs.enabled</name>
+   >     <value>true</value>
+   >   </property>
+   >   <!-- 关闭权限验证，hive可以直连 -->
+   >   <property>
+   >     <name>dfs.permissions.enabled</name>
+   >     <value>false</value>
+   >   </property>
+   > </configuration>
+   > ```
+
+   > yarn-site.xml
+   >
+   > ```
+   > <configuration>
+   > 
+   >   <!-- yarn ha configuration-->
+   >   <property>
+   >     <name>yarn.resourcemanager.ha.enabled</name>
+   >     <value>true</value>
+   >   </property>
+   >   <!-- 定义集群名称 -->
+   >   <property>
+   >     <name>yarn.resourcemanager.cluster-id</name>
+   >     <value>cluster1</value>
+   >   </property>
+   >   <!-- 定义本机在在高可用集群中的id 要与 yarn.resourcemanager.ha.rm-ids 定义的值对应，如果不作为resource manager 则删除这项配置。-->
+   >   <property>
+   >     <name>yarn.resourcemanager.ha.id</name>
+   >     <value>rm1</value>
+   >   </property>
+   >   <!-- 定义高可用集群中的 id 列表 -->
+   >   <property>
+   >     <name>yarn.resourcemanager.ha.rm-ids</name>
+   >     <value>rm1,rm2</value>
+   >   </property>
+   >   <!-- 定义高可用RM集群具体是哪些机器 -->
+   >   <property>
+   >     <name>yarn.resourcemanager.hostname.rm1</name>
+   >     <value>h03</value>
+   >   </property>
+   >   <property>
+   >     <name>yarn.resourcemanager.hostname.rm2</name>
+   >     <value>h04</value>
+   >   </property>
+   >   <property>
+   >     <name>yarn.resourcemanager.webapp.address.rm1</name>
+   >     <value>h03:8088</value>
+   >   </property>
+   >   <property>
+   >     <name>yarn.resourcemanager.webapp.address.rm2</name>
+   >     <value>h04:8088</value>
+   >   </property>
+   >   <property>
+   >     <name>hadoop.zk.address</name>
+   >     <value>h01:2181,h03:2181,h04:2181</value>
+   >   </property>
+   > 
+   >   <!-- Site specific YARN configuration properties -->
+   >   <property>
+   >     <name>yarn.nodemanager.aux-services</name>
+   >     <value>mapreduce_shuffle</value>
+   >   </property>
+   > </configuration>
+   > ```
+
+   > mapred-site.xml
+   >
+   > ```
+   > <configuration>
+   >   <property>
+   >     <name>mapreduce.framework.name</name>
+   >     <value>yarn</value>
+   >   </property>
+   >   <property>
+   >     <name>mapreduce.application.classpath</name>
+   >     <value>  
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/common/*,
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/common/lib/*,
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/hdfs/*,
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/hdfs/lib/*,
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/mapreduce/*,
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/mapreduce/lib/*,
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/yarn/*,
+   >         /home/hadoop/hadoop-3.2.2/share/hadoop/yarn/lib/*
+   >     </value>
+   >   </property>
+   > 
+   > </configuration>
+   > ```
+
+   > hadoop-env.sh
+   >
+   > ```
+   > export JAVA_HOME=/usr/lib/jvm/jre-1.8.0
+   > export HADOOP_HOME=/home/hadoop/hadoop-3.2.2
+   > export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
+   > 
+   > for f in $HADOOP_HOME/contrib/capacity-scheduler/*.jar; do
+   >   if [ "$HADOOP_CLASSPATH" ]; then
+   >     export HADOOP_CLASSPATH=$HADOOP_CLASSPATH:$f
+   >   else
+   >     export HADOOP_CLASSPATH=$f
+   >   fi
+   > done
+   > 
+   > export HADOOP_OS_TYPE=${HADOOP_OS_TYPE:-$(uname -s)}
+   > export HADOOP_OPTS="$HADOOP_OPTS -Djava.net.preferIPv4Stack=true"
+   > 
+   > export HDFS_NAMENODE_OPTS="-Dhadoop.security.logger=${HADOOP_SECURITY_LOGGER:-INFO,RFAS} -Dhdfs.audit.logger=${HDFS_AUDIT_LOGGER:-INFO,NullAppender} $HDFS_NAMENODE_OPTS"
+   > export HDFS_DATANODE_OPTS="-Dhadoop.security.logger=ERROR,RFAS $HDFS_DATANODE_OPTS"
+   > 
+   > export HADOOP_SECONDARYNAMENODE_OPTS="-Dhadoop.security.logger=${HADOOP_SECURITY_LOGGER:-INFO,RFAS} -Dhdfs.audit.logger=${HDFS_AUDIT_LOGGER:-INFO,NullAppender} $HADOOP_SECONDARYNAMENODE_OPTS"
+   > 
+   > export HADOOP_NFS3_OPTS="$HADOOP_NFS3_OPTS"
+   > export HADOOP_PORTMAP_OPTS="-Xmx512m $HADOOP_PORTMAP_OPTS"
+   > export HADOOP_CLIENT_OPTS="-Xmx512m $HADOOP_CLIENT_OPTS"
+   > export HADOOP_SECURE_DN_USER=${HADOOP_SECURE_DN_USER}
+   > export HADOOP_SECURE_LOG_DIR=${HADOOP_LOG_DIR}/${HADOOP_HDFS_USER}
+   > 
+   > 
+   > export HADOOP_PID_DIR=${HADOOP_PID_DIR}
+   > export HADOOP_SECURE_DN_PID_DIR=${HADOOP_PID_DIR}
+   > 
+   > export HADOOP_IDENT_STRING=$USER
+   > ```
+
+   > yarn.env
+   >
+   > ```
+   > export JAVA_HOME=/usr/lib/jvm/jre-1.8.0
+   > ```
+
+   > workers
+   >
+   > ```
+   > h01
+   > h02
+   > h03
+   > h04
+   > ```
+
+6. 拷贝上述修改的配置文件到其他 slaver 节点
+
+   ```
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/hadoop-env.sh dest=~/hadoop-3.2.2/etc/hadoop'
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/hdfs-site.xml dest=~/hadoop-3.2.2/etc/hadoop'
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/mapred-site.xml dest=~/hadoop-3.2.2/etc/hadoop'
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/workers dest=~/hadoop-3.2.2/etc/hadoop'
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/yarn-env.sh dest=~/hadoop-3.2.2/etc/hadoop'
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/yarn-site.xml dest=~/hadoop-3.2.2/etc/hadoop'
+   ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/core-site.xml dest=~/hadoop-3.2.2/etc/hadoop'
+   ```
+
+   
+
+7. 修改 h04 节点的 yarn-site.xml 文件，调整 rm id
+
+   ```
+   vi /home/hadoop/hadoop-3.2.2/etc/hadoop/yarn-site.xml
+   ```
+
+   ```
+   <property>
+       <name>yarn.resourcemanager.ha.id</name>
+       <value>rm2</value>
+   </property>
+   ```
+
+   ![image-20220507163546411](hadoop-quick-start.assets/image-20220507163546411.png) 
+
+8. 修改 h01、h02 节点的 yarn-site.xml 文件， 删除  ResourceManager 配置
+
+   ```
+   vi /home/hadoop/hadoop-3.2.2/etc/hadoop/yarn-site.xml
+   ```
+
+   ![image-20220507163657897](hadoop-quick-start.assets/image-20220507163657897.png) 
+
+## 2.5 启动 Hadoop
+
+1. 所有机器启动 journalnode
+
+   ```
+   ansible 192.168.5.37 -m shell -a "nohup /home/hadoop/hadoop-3.2.2/sbin/hadoop-daemon.sh start journalnode &"
+   ansible 192.168.5.32 -m shell -a "nohup /home/hadoop/hadoop-3.2.2/sbin/hadoop-daemon.sh start journalnode &"
+   
+   
+   ```
+
+2. 格式化 namenode
+
+   在h01上执行
+
+   ```
+   /home/hadoop/hadoop-3.2.2/bin/hdfs namenode -format
+   /home/hadoop/hadoop-3.2.2/bin/hdfs zkfc -formatZK
+   /home/hadoop/hadoop-3.2.2/bin/hdfs namenode
+   /home/hadoop/hadoop-3.2.2/bin/hdfs namenode -bootstrapStandby
+   
+   #  namenode 1
+   ```
+
+   ```
+   # 停止 journalnode
+   
+   ansible 192.168.5.37 -m shell -a "nohup /home/hadoop/hadoop-3.2.2/sbin/hadoop-daemon.sh stop journalnode &"
+   ansible 192.168.5.32 -m shell -a "nohup /home/hadoop/hadoop-3.2.2/sbin/hadoop-daemon.sh stop journalnode &"
+   ```
+
+3.  hdfs 一键启动
+
+   ```
+   /home/hadoop/hadoop-3.2.2/sbin/start-dfs.sh
+   /home/hadoop/hadoop-3.2.2/sbin/start-yarn.sh
+   
+   /home/hadoop/hadoop-3.2.2/sbin/stop-dfs.sh
+   /home/hadoop/hadoop-3.2.2/sbin/stop-yarn.sh
+   ```
+
+   
