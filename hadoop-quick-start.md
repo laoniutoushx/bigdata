@@ -907,31 +907,31 @@ sudo /etc/init.d/dns-clean start
    >
    > ```
    > <configuration>
-   >     <!-- 指定hdfs的nameservice为ns1 -->
-   >     <!-- <property>
-   >         <name>fs.defaultFS</name>
-   >         <value>hdfs://ns1/</value>
-   >     </property> -->
-   >     <property>
-   >         <name>fs.default.name</name>
-   >         <value>hdfs://h01:9000</value>
-   >     </property>
+   >        <!-- 指定hdfs的nameservice为ns1 -->
+   >        <!-- <property>
+   >            <name>fs.defaultFS</name>
+   >            <value>hdfs://ns1/</value>
+   >        </property> -->
+   >        <property>
+   >            <name>fs.default.name</name>
+   >            <value>hdfs://h01:9000</value>
+   >        </property>
    > 
-   >     <!-- 指定hadoop临时目录 -->
-   >     <property>
-   >         <name>hadoop.tmp.dir</name>
-   >         <value>/home/hadoop/data</value>
-   >     </property>
+   >        <!-- 指定hadoop临时目录 -->
+   >        <property>
+   >            <name>hadoop.tmp.dir</name>
+   >            <value>/home/hadoop/data</value>
+   >        </property>
    > 
-   >     <!-- 指定zookeeper地址 -->
-   >     <property>
-   >         <name>ha.zookeeper.quorum</name>
-   >         <value>h01:2181,h03:2181,h04:2181</value>
-   >     </property>
-   >     <!-- <property>
-   >         <name>ha.zookeeper.session-timeout.ms</name>
-   >         <value>3000</value>
-   >     </property> -->
+   >        <!-- 指定zookeeper地址 -->
+   >        <property>
+   >            <name>ha.zookeeper.quorum</name>
+   >            <value>h01:2181,h03:2181,h04:2181</value>
+   >        </property>
+   >        <!-- <property>
+   >            <name>ha.zookeeper.session-timeout.ms</name>
+   >            <value>3000</value>
+   >        </property> -->
    > </configuration>
    > ```
 
@@ -939,198 +939,182 @@ sudo /etc/init.d/dns-clean start
    >
    > ```
    > <configuration>
-   >   <!-- hdfs HA configuration-->
-   >   <!-- all default configuration can be found at https://hadoop.apache.org/docs/stable|<can be a version liek r3.2.1></can>/hadoop-project-dist/hadoop-hdfs//hdfs-default.xml -->
-   >   
+   >     <!-- hdfs HA configuration-->
+   >     <!-- all default configuration can be found at https://hadoop.apache.org/docs/stable|<can be a version liek r3.2.1></can>/hadoop-project-dist/hadoop-hdfs//hdfs-default.xml -->
+   >     
+   >     <property>
+   >        <name>dfs.ha.automatic-failover.enabled</name>
+   >        <value>true</value>
+   >     </property>
+   >     <!-- dfs.nameservices 这里需要与core-site.xml 中fs.defaultFS 的名称一致-->
+   >     <property>
+   >        <name>dfs.nameservices</name>
+   >        <value>mycluster</value>
+   >     </property>
+   >     <!-- 定义集群中 namenode 列表，这里定义了三个namenode，分别是nn1,nn2,nn3-->
+   >     <property>
+   >        <name>dfs.ha.namenodes.mycluster</name>
+   >        <value>nn1,nn2</value>
+   >     </property>
+   >     <!-- namenode nn1的具体定义，这里要和 dfs.ha.namenodes.mycluster 定义的列表对应 -->
+   >     <property>
+   >        <name>dfs.namenode.rpc-address.mycluster.nn1</name>
+   >        <value>h01:9000</value>
+   >     </property>
+   >     <property>
+   >        <name>dfs.namenode.rpc-address.mycluster.nn2</name>
+   >        <value>h02:9000</value>
+   >     </property>
+   >     <!-- namenode nn1的具体定义，这里要和 dfs.ha.namenodes.mycluster 定义的列表对应 -->
+   >      <property>
+   >        <name>dfs.namenode.http-address.mycluster.nn1</name>
+   >       <value>h01:50070</value>
+   >     </property>
+   >      <property>
+   >        <name>dfs.namenode.http-address.mycluster.nn2</name>
+   >       <value>h02:50070</value>
+   >     </property>
+   >   <!-- 指定NameNode的元数据在JournalNode上的存放位置 -->
+   >      <property>
+   >        <name>dfs.namenode.shared.edits.dir</name>
+   >       <value>qjournal://h01:8485;h02:8485/mycluster</value>
+   >     </property>
+   >      <!-- 指定JournalNode在本地磁盘存放数据的位置 -->
+   >      <property>
+   >       <name>dfs.journalnode.edits.dir</name>
+   >       <value>/home/hadoop/data/hadoop/journalnode/data</value>
+   >      </property>
+   >      <!-- 配置失败自动切换实现方式 -->
+   >     <property>
+   >       <name>dfs.client.failover.proxy.provider.mycluster</name>
+   >        <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+   >      </property>
+   >     <!-- 配置隔离机制方法，多个机制用换行分割，即每个机制暂用一行-->
    >   <property>
-   >     <name>dfs.ha.automatic-failover.enabled</name>
+   >       <name>dfs.ha.fencing.methods</name>
+   >        <value>sshfence</value>
+   >      </property>
+   >     <!-- 使用sshfence隔离机制时需要ssh免登陆 -->
+   >     <property>
+   >       <name>dfs.ha.fencing.ssh.private-key-files</name>
+   >        <value>/home/hadoop/.ssh/id_rsa</value>
+   >      </property>
+   >     <!-- 配置sshfence隔离机制超时时间 -->
+   >     <!-- <property>
+   >       <name>dfs.ha.fencing.ssh.connect-timeout</name>
+   >        <value>30000</value>
+   >      </property>
+   >     <property>
+   >       <name>dfs.journalnode.http-address</name>
+   >       <value>0.0.0.0:8480</value>
+   >      </property>
+   >      <property>
+   >       <name>dfs.journalnode.rpc-address</name>
+   >       <value>0.0.0.0:8485</value>
+   >     </property> -->
+   >      <!-- hdfs HA configuration end-->
+   >    
+   >     <property>
+   >       <name>dfs.replication</name>
+   >       <value>2</value>
+   >      </property>
+   >      <property>
+   >       <name>dfs.namenode.name.dir</name>
+   >       <value>/home/hadoop/data/hadoop/hdfs/namenode</value>
+   >      </property>
+   >      <property>
+   >       <name>dfs.datanode.data.dir</name>
+   >       <value>/home/hadoop/data/hadoop/hdfs/datanode</value>
+   >      </property>
+   >      <!--开启webhdfs接口访问-->
+   >     <property>
+   >       <name>dfs.webhdfs.enabled</name>
    >     <value>true</value>
-   >   </property>
-   >   <!-- dfs.nameservices 这里需要与core-site.xml 中fs.defaultFS 的名称一致-->
-   >   <property>
-   >     <name>dfs.nameservices</name>
-   >     <value>mycluster</value>
-   >   </property>
-   >   <!-- 定义集群中 namenode 列表，这里定义了三个namenode，分别是nn1,nn2,nn3-->
-   >   <property>
-   >     <name>dfs.ha.namenodes.mycluster</name>
-   >     <value>nn1,nn2,nn3,nn4</value>
-   >   </property>
-   >   <!-- namenode nn1的具体定义，这里要和 dfs.ha.namenodes.mycluster 定义的列表对应 -->
-   >   <property>
-   >     <name>dfs.namenode.rpc-address.mycluster.nn1</name>
-   >     <value>h01:8020</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.namenode.rpc-address.mycluster.nn2</name>
-   >     <value>h02:8020</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.namenode.rpc-address.mycluster.nn3</name>
-   >     <value>h03:8020</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.namenode.rpc-address.mycluster.nn4</name>
-   >     <value>h04:8020</value>
-   >   </property>
-   >   <!-- namenode nn1的具体定义，这里要和 dfs.ha.namenodes.mycluster 定义的列表对应 -->
-   >   <property>
-   >     <name>dfs.namenode.http-address.mycluster.nn1</name>
-   >     <value>h01:9870</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.namenode.http-address.mycluster.nn2</name>
-   >     <value>h02:9870</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.namenode.http-address.mycluster.nn3</name>
-   >     <value>h03:9870</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.namenode.http-address.mycluster.nn4</name>
-   >     <value>h04:9870</value>
-   >   </property>
-   > <!-- 指定NameNode的元数据在JournalNode上的存放位置 -->
-   >   <property>
-   >     <name>dfs.namenode.shared.edits.dir</name>
-   >     <value>qjournal://h01:8485;h02:8485;h03:8485;h04:8485/mycluster</value>
-   >   </property>
-   >   <!-- 指定JournalNode在本地磁盘存放数据的位置 -->
-   >   <property>
-   >     <name>dfs.journalnode.edits.dir</name>
-   >     <value>/home/hadoop/data/hadoop/journalnode/data</value>
-   >   </property>
-   >   <!-- 配置失败自动切换实现方式 -->
-   >   <property>
-   >     <name>dfs.client.failover.proxy.provider.mycluster</name>
-   >     <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
-   >   </property>
-   >   <!-- 配置隔离机制方法，多个机制用换行分割，即每个机制暂用一行-->
-   >   <property>
-   >     <name>dfs.ha.fencing.methods</name>
-   >     <value>sshfence</value>
-   >   </property>
-   >   <!-- 使用sshfence隔离机制时需要ssh免登陆 -->
-   >   <property>
-   >     <name>dfs.ha.fencing.ssh.private-key-files</name>
-   >     <value>/home/hadoop/.ssh/id_rsa</value>
-   >   </property>
-   >   <!-- 配置sshfence隔离机制超时时间 -->
-   >   <property>
-   >     <name>dfs.ha.fencing.ssh.connect-timeout</name>
-   >     <value>30000</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.journalnode.http-address</name>
-   >     <value>0.0.0.0:8480</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.journalnode.rpc-address</name>
-   >     <value>0.0.0.0:8485</value>
-   >   </property>
-   >   <!-- hdfs HA configuration end-->
-   > 
-   >   <property>
-   >     <name>dfs.replication</name>
-   >     <value>2</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.namenode.name.dir</name>
-   >     <value>/home/hadoop/data/hadoop/hdfs/namenode</value>
-   >   </property>
-   >   <property>
-   >     <name>dfs.datanode.data.dir</name>
-   >     <value>/home/hadoop/data/hadoop/hdfs/datanode</value>
-   >   </property>
-   >   <!--开启webhdfs接口访问-->
-   >   <property>
-   >     <name>dfs.webhdfs.enabled</name>
-   >     <value>true</value>
-   >   </property>
-   >   <!-- 关闭权限验证，hive可以直连 -->
-   >   <property>
-   >     <name>dfs.permissions.enabled</name>
-   >     <value>false</value>
-   >   </property>
-   > </configuration>
-   > ```
-
+   >     </property>
+   >      <!-- 关闭权限验证，hive可以直连 -->
+   >      <property>
+   >       <name>dfs.permissions.enabled</name>
+   >       <value>false</value>
+   >      </property>
+   >    </configuration>
+   >   ```
+   
    > yarn-site.xml
    >
    > ```
    > <configuration>
    > 
-   >   <!-- yarn ha configuration-->
-   >   <property>
+   >  <!-- yarn ha configuration-->
+   >  <property>
    >     <name>yarn.resourcemanager.ha.enabled</name>
    >     <value>true</value>
-   >   </property>
-   >   <!-- 定义集群名称 -->
-   >   <property>
+   >  </property>
+   >  <!-- 定义集群名称 -->
+   >  <property>
    >     <name>yarn.resourcemanager.cluster-id</name>
    >     <value>cluster1</value>
-   >   </property>
-   >   <!-- 定义本机在在高可用集群中的id 要与 yarn.resourcemanager.ha.rm-ids 定义的值对应，如果不作为resource manager 则删除这项配置。-->
-   >   <property>
-   >     <name>yarn.resourcemanager.ha.id</name>
-   >     <value>rm1</value>
-   >   </property>
-   >   <!-- 定义高可用集群中的 id 列表 -->
-   >   <property>
-   >     <name>yarn.resourcemanager.ha.rm-ids</name>
-   >     <value>rm1,rm2</value>
-   >   </property>
-   >   <!-- 定义高可用RM集群具体是哪些机器 -->
-   >   <property>
-   >     <name>yarn.resourcemanager.hostname.rm1</name>
-   >     <value>h03</value>
-   >   </property>
-   >   <property>
-   >     <name>yarn.resourcemanager.hostname.rm2</name>
-   >     <value>h04</value>
-   >   </property>
-   >   <property>
-   >     <name>yarn.resourcemanager.webapp.address.rm1</name>
-   >     <value>h03:8088</value>
-   >   </property>
-   >   <property>
-   >     <name>yarn.resourcemanager.webapp.address.rm2</name>
-   >     <value>h04:8088</value>
-   >   </property>
-   >   <property>
-   >     <name>hadoop.zk.address</name>
-   >     <value>h01:2181,h03:2181,h04:2181</value>
-   >   </property>
-   > 
-   >   <!-- Site specific YARN configuration properties -->
-   >   <property>
-   >     <name>yarn.nodemanager.aux-services</name>
-   >     <value>mapreduce_shuffle</value>
-   >   </property>
-   > </configuration>
+   >  </property>
    > ```
+>     <!-- 定义本机在在高可用集群中的id 要与 yarn.resourcemanager.ha.rm-ids 定义的值对应，如果不作为resource manager 则删除这项配置。-->
+>     <!-- 定义高可用集群中的 id 列表 -->
+>      <property>
+>        <name>yarn.resourcemanager.ha.rm-ids</name>
+>       <value>rm1,rm2</value>
+>     </property>
+>     <!-- 定义高可用RM集群具体是哪些机器 -->
+>      <property>
+>        <name>yarn.resourcemanager.hostname.rm1</name>
+>       <value>h03</value>
+>     </property>
+>     <property>
+>        <name>yarn.resourcemanager.hostname.rm2</name>
+>        <value>h04</value>
+>     </property>
+>     <property>
+>        <name>yarn.resourcemanager.webapp.address.rm1</name>
+>        <value>h03:8088</value>
+>     </property>
+>     <property>
+>        <name>yarn.resourcemanager.webapp.address.rm2</name>
+>        <value>h04:8088</value>
+>     </property>
+>     <property>
+>        <name>hadoop.zk.address</name>
+>        <value>h01:2181,h03:2181,h04:2181</value>
+>     </property>
+>
+>      <!-- Site specific YARN configuration properties -->
+>      <property>
+>       <name>yarn.nodemanager.aux-services</name>
+>     <value>mapreduce_shuffle</value>
+>     </property>
+>     </configuration>
+>
+>     ```
+>     
+>     ```
 
    > mapred-site.xml
    >
    > ```
    > <configuration>
-   >   <property>
-   >     <name>mapreduce.framework.name</name>
-   >     <value>yarn</value>
-   >   </property>
-   >   <property>
-   >     <name>mapreduce.application.classpath</name>
-   >     <value>  
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/common/*,
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/common/lib/*,
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/hdfs/*,
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/hdfs/lib/*,
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/mapreduce/*,
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/mapreduce/lib/*,
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/yarn/*,
-   >         /home/hadoop/hadoop-3.2.2/share/hadoop/yarn/lib/*
-   >     </value>
-   >   </property>
+   >     <property>
+   >        <name>mapreduce.framework.name</name>
+   >        <value>yarn</value>
+   >     </property>
+   >     <property>
+   >        <name>mapreduce.application.classpath</name>
+   >        <value>  
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/common/*,
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/common/lib/*,
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/hdfs/*,
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/hdfs/lib/*,
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/mapreduce/*,
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/mapreduce/lib/*,
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/yarn/*,
+   >            /home/hadoop/hadoop-3.2.2/share/hadoop/yarn/lib/*
+>        </value>
+   >     </property>
    > 
    > </configuration>
    > ```
@@ -1143,18 +1127,18 @@ sudo /etc/init.d/dns-clean start
    > export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
    > 
    > for f in $HADOOP_HOME/contrib/capacity-scheduler/*.jar; do
-   >   if [ "$HADOOP_CLASSPATH" ]; then
-   >     export HADOOP_CLASSPATH=$HADOOP_CLASSPATH:$f
-   >   else
-   >     export HADOOP_CLASSPATH=$f
-   >   fi
+   >     if [ "$HADOOP_CLASSPATH" ]; then
+   >        export HADOOP_CLASSPATH=$HADOOP_CLASSPATH:$f
+   >     else
+   >        export HADOOP_CLASSPATH=$f
+   >     fi
    > done
    > 
    > export HADOOP_OS_TYPE=${HADOOP_OS_TYPE:-$(uname -s)}
    > export HADOOP_OPTS="$HADOOP_OPTS -Djava.net.preferIPv4Stack=true"
    > 
    > export HDFS_NAMENODE_OPTS="-Dhadoop.security.logger=${HADOOP_SECURITY_LOGGER:-INFO,RFAS} -Dhdfs.audit.logger=${HDFS_AUDIT_LOGGER:-INFO,NullAppender} $HDFS_NAMENODE_OPTS"
-   > export HDFS_DATANODE_OPTS="-Dhadoop.security.logger=ERROR,RFAS $HDFS_DATANODE_OPTS"
+> export HDFS_DATANODE_OPTS="-Dhadoop.security.logger=ERROR,RFAS $HDFS_DATANODE_OPTS"
    > 
    > export HADOOP_SECONDARYNAMENODE_OPTS="-Dhadoop.security.logger=${HADOOP_SECURITY_LOGGER:-INFO,RFAS} -Dhdfs.audit.logger=${HDFS_AUDIT_LOGGER:-INFO,NullAppender} $HADOOP_SECONDARYNAMENODE_OPTS"
    > 
@@ -1198,9 +1182,7 @@ sudo /etc/init.d/dns-clean start
    ansible slaver -m copy -a 'src=~/hadoop-3.2.2/etc/hadoop/core-site.xml dest=~/hadoop-3.2.2/etc/hadoop'
    ```
 
-   
-
-7. 修改 h04 节点的 yarn-site.xml 文件，调整 rm id
+7. 修改 h04 节点的 yarn-site.xml 文件，调整 rm id 为 2
 
    ```
    vi /home/hadoop/hadoop-3.2.2/etc/hadoop/yarn-site.xml
@@ -1225,7 +1207,7 @@ sudo /etc/init.d/dns-clean start
 
 ## 2.5 启动 Hadoop
 
-1. 所有机器启动 journalnode
+1. 所有机器启动 journalnode（h01、h02）
 
    ```
    ansible 192.168.5.37 -m shell -a "nohup /home/hadoop/hadoop-3.2.2/sbin/hadoop-daemon.sh start journalnode &"
