@@ -656,24 +656,32 @@ sudo /etc/init.d/dns-clean start
   192.168.5.34 ansible_ssh_user=hadoop ansible_ssh_pass=seatone@123
   192.168.5.31 ansible_ssh_user=hadoop ansible_ssh_pass=seatone@123
   
-  # 所有节点
   [web]
   192.168.5.37
   192.168.5.32
   192.168.5.34
   192.168.5.31
   
-  # 从节点
   [slaver]
   192.168.5.32
   192.168.5.34
   192.168.5.31
   
-  # zookeeper 节点
   [zk]
   192.168.5.37
   192.168.5.34
   192.168.5.31
+  
+  # journalnode
+  [jn]
+  192.168.5.37
+  192.168.5.32
+  
+  
+  # hive
+  [hive]
+  192.168.5.31
+  192.168.5.32
   ```
 
   
