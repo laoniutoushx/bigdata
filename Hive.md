@@ -21,13 +21,17 @@ Hive：运行时，元数据存储在关系型数据库里面
 
 - 让了方便非java开发人员对hdfs上的数据做 MapReduce 操作
 
+1.2、Hive与数据库的区别
+
+![image-20220512203301482](Hive.assets/image-20220512203301482.png) 
+
 ## 架构
 
 1. 从客户端编辑 sql 语句提交到服务端，通过解释器，编译器，优化器生成执行计划，然后提交到 Hadoop 集群运行
 
 >  其中计划执行的最小单元是一个个 operator，每个operator代表一个操作或者一个MR作业
 
-
+**Spark SQL on Hive**
 
 1. Hive的元数据依赖于[关系型数据库](https://cloud.tencent.com/product/cdb-overview?from=10680)，其真实数据是存在于Hadoop之上的
 
@@ -35,6 +39,8 @@ Hive：运行时，元数据存储在关系型数据库里面
 
    ![image-20220509110531671](Hive.assets/image-20220509110531671.png) 
 
+   ![12、Hive核心概念与原理详解_Hive原理_02](Hive.assets/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dlaXhpbl80MDQ1MzQwNA==,size_16,color_FFFFFF,t_70.png) 
+   
    ![img](Hive.assets/12214135-7d3ca3b807ad82e8) 
 
 
