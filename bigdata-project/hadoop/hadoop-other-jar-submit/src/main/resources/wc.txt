@@ -1,0 +1,3 @@
+hadoop  hadoop  hadoop
+spark   spark   spark
+scala   scala   scala
