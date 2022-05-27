@@ -380,13 +380,68 @@ schematool -dbType mysql -initSchema
 
 # 启动
 hive --service metastore
+# 后台启动
+nohup hive --service metastore &
 ```
 
-## 2.6 启动 hive-client(h02)
+> 前台启动的方式导致需要打开多个shell窗口，可以使用如下方式后台方式启动
+>
+> nohup: 放在命令开头，表示不挂起,也就是关闭终端进程也继续保持运行状态
+>
+> 0:标准输入
+>
+> 1:标准输出
+>
+> 2:错误输出
+>
+> 2>&1 : 表示将错误重定向到标准输出上
+>
+> &: 放在命令结尾,表示后台运行
+>
+> 一般会组合使用: nohup [xxx命令操作]> file 2>&1 & ， 表示将xxx命令运行的
+>
+> 结果输出到file中，并保持命令启动的进程在后台运行。
+
+```
+# 后台启动
+nohup hive --service metastore 2>&1 &
+```
+
+
+
+## 2.6 启动 hive-client(h02)，用户连接
 
 ```
 hive
 ```
+
+## 2.6 启动 hive-server2(h02) ，应用程序连接
+
+```
+#　前台
+hive --service hiveserver2
+#　后台
+hive --service hiveserver2 &
+```
+
+```
+# 查看 hive-server2 占用端口
+ss -nal
+```
+
+![image-20220525102719999](Hive-quick-start.assets/image-20220525102719999.png) 
+
+## 2.7 beelne 连接 hive-server2（h04）
+
+```
+beeline
+```
+
+```
+!connect jdbc:hive2://h02:10000/default hadoop seatone@123
+```
+
+![image-20220525103030395](Hive-quick-start.assets/image-20220525103030395.png) 
 
 
 

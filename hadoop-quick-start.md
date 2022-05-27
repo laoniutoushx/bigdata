@@ -1254,4 +1254,21 @@ sudo /etc/init.d/dns-clean start
    /home/hadoop/hadoop-3.2.2/sbin/stop-yarn.sh
    ```
 
-   
+
+
+
+先启动 zookeeper
+
+```
+ansible zk -a "/home/hadoop/zookeeper-3.7.0/bin/zkServer.sh start"
+ansible zk -a "/home/hadoop/zookeeper-3.7.0/bin/zkServer.sh status"
+ansible zk -a "/home/hadoop/zookeeper-3.7.0/bin/zkServer.sh stop"
+```
+
+在启动 hadoop
+
+```
+/home/hadoop/hadoop-3.2.2/sbin/start-dfs.sh
+/home/hadoop/hadoop-3.2.2/sbin/start-yarn.sh
+```
+
